@@ -219,3 +219,87 @@ Function Get-JavaCertStores {
 }
 
 Contact UsTerms of UsePrivacy PolicyGallery StatusFeedbackFAQs© 2019 Microsoft Corporation
+
+
+
+############################################################################################################################
+
+my script 
+
+
+Function LstCerts($path){
+
+If (!(Test-Path $path)) {
+    return "Directory not found"
+}
+ 
+
+
+ $KeyTool = $(Join-Path -Path $path -ChildPath "jre/bin/keytool.exe")
+    If (!(Test-Path -Path $KeyTool -PathType Leaf)) { $KeyTool = "keytool" }
+
+    # find existing cacerts files at different locations within java home
+    $KeyStores = @("jre/jre/lib/security/cacerts") |
+      Foreach-Object { Join-Path -Path $path -ChildPath $_ } |
+      Where-Object { Test-Path -Path $_ -PathType Leaf }
+
+    # return PSCustomObject with keystore and keytool locations
+   $KeyStores | ForEach-Object { [PSCustomObject] @{
+      KeyStore = $_
+      KeyTool = $KeyTool
+    }}
+  
+
+}
+
+
+<#Install#>
+
+Function Install-X509CertificateToJavaTrustedCaKeystores {
+  [CmdletBinding()]
+  Param(
+    [Parameter(Mandatory = $True, ValueFromPipelineByPropertyName=$True, Position = 0)]
+    [ValidateNotNullOrEmpty()]
+    [Alias("CertificateObject", "X509CertificateObject", "X509Certificate2")]
+    [System.Security.Cryptography.X509Certificates.X509Certificate2] $X509Certificate,
+    [Parameter(Mandatory = $False, ValueFromPipelineByPropertyName=$True, Position = 1)]
+    [Alias("FriendlyName", "Name", "Alias", "CertificateAlias")]
+    [String] $CertAlias,
+    [Parameter(Mandatory = $True, Position = 3)]
+    [ValidateNotNullOrEmpty()]
+    [Alias("StorePassword", "StorePass", "Password", "Pass")]
+    [String] $KeyStorePass = "changeit"
+  )
+
+  BEGIN {
+
+    # Gather all java keystores - this is only required once when running multiple times
+    $JavaKeystores = Get-JavaCertStores
+  }
+
+  PROCESS {
+
+    # Use the common name as alias if no alias has been given
+    If ([String]::IsNullOrWhiteSpace($CertAlias)) {
+      $CertAlias = Get-X509CommonNameFromSubject -X509Subject $X509Certificate.Subject
+    }
+
+    # Remove invalid characters from alias
+    $CertAlias = Get-SafeCertificateAlias $CertAlias
+
+    # Export certificate to temporary file
+    $TempCertFile = Export-X509Certificate -X509Certificate $X509Certificate
+
+    Try {
+      # Import the certificate to all given java keystores
+      $JavaKeyStores | Import-TrustedCaCertificateToJavaKeystore -CertAlias $CertAlias -CertFile $TempCertFile -KeyStorePass $KeyStorePass
+    }
+    Finally {
+      # Remove the exported certificate after importing to all stores
+      Remove-Item $TempCertFile
+    }
+
+  }
+
+}
+
