@@ -1,13 +1,10 @@
-
-
-# Installs an X509Certificate to all default java keystore certca files found on the system
 Function Install-X509CertificateToJavaTrustedCaKeystores {
   [CmdletBinding()]
   Param(
     [Parameter(Mandatory = $True, ValueFromPipelineByPropertyName=$True, Position = 0)]
     [ValidateNotNullOrEmpty()]
     [Alias("CertificateObject", "X509CertificateObject", "X509Certificate2")]
-    [System.Security.Cryptography.X509Certificates.X509Certificate2] $X509Certificate,
+    [String] $X509Certificate,
     [Parameter(Mandatory = $False, ValueFromPipelineByPropertyName=$True, Position = 1)]
     [Alias("FriendlyName", "Name", "Alias", "CertificateAlias")]
     [String] $CertAlias,
@@ -20,25 +17,16 @@ Function Install-X509CertificateToJavaTrustedCaKeystores {
   BEGIN {
 
     # Gather all java keystores - this is only required once when running multiple times
-    $JavaKeystores = Get-JavaCertStores
+    $JavaKeystores = Get-JavaCertStores("c:\Program Files\Android\Android Studio1")
   }
 
   PROCESS {
 
-    # Use the common name as alias if no alias has been given
-    If ([String]::IsNullOrWhiteSpace($CertAlias)) {
-      $CertAlias = Get-X509CommonNameFromSubject -X509Subject $X509Certificate.Subject
-    }
-
-    # Remove invalid characters from alias
-    $CertAlias = Get-SafeCertificateAlias $CertAlias
-
-    # Export certificate to temporary file
-    $TempCertFile = Export-X509Certificate -X509Certificate $X509Certificate
+    
 
     Try {
       # Import the certificate to all given java keystores
-      $JavaKeyStores | Import-TrustedCaCertificateToJavaKeystore -CertAlias $CertAlias -CertFile $TempCertFile -KeyStorePass $KeyStorePass
+      $JavaKeyStores | Import-TrustedCaCertificateToJavaKeystore -CertAlias $CertAlias -CertFile $X509Certificate -KeyStorePass $KeyStorePass
     }
     Finally {
       # Remove the exported certificate after importing to all stores
@@ -50,7 +38,36 @@ Function Install-X509CertificateToJavaTrustedCaKeystores {
 }
 
 
-# Check if certificate exists before adding it
+Function Get-JavaCertStores($path){
+
+If (!(Test-Path $path)) {
+    return "Directory not found"
+}
+ 
+
+
+ $KeyTool = $(Join-Path -Path $path -ChildPath "jre/bin/keytool.exe")
+    If (!(Test-Path -Path $KeyTool -PathType Leaf)) { $KeyTool = "keytool" }
+
+    # find existing cacerts files at different locations within java home
+    $KeyStores = @("jre/jre/lib/security/cacerts") |
+      Foreach-Object { Join-Path -Path $path -ChildPath $_ } |
+      Where-Object { Test-Path -Path $_ -PathType Leaf }
+
+    # return PSCustomObject with keystore and keytool locations
+   $KeyStores | ForEach-Object { [PSCustomObject] @{
+      KeyStore = $_
+      KeyTool = $KeyTool
+    }}
+  
+
+
+
+}
+
+
+
+
 Function Import-TrustedCaCertificateToJavaKeystore {
   [CmdletBinding()]
   Param(
@@ -167,139 +184,10 @@ Function Test-CertificateExistsWithinJavaKeystore {
 }
 
 
-# Returns a list of all java installations within windows default application paths
-Function Get-JavaHomes {
-
-  $ValidRoots = @("C:/Program Files/Java", "C:/Program Files (x86)/Java") |
-    Where-Object { Test-Path -Path "$_" -PathType Container }
-
-  return Get-ChildItem -Path $ValidRoots -Directory |
-    Where-Object { Test-Path -Path $(Join-Path -Path $_.FullName -ChildPath "bin/java.exe") -PathType Leaf } |
-    Select-Object -ExpandProperty FullName
-
-}
 
 
-# Returns a list of cacert keystore files and keytool within a java home under windows
-Function Get-JavaHomeCertStoreLocations {
-  [CmdletBinding()]
-  Param(
-    [Parameter(Mandatory = $True, ValueFromPipeline = $True, Position = 0)]
-    [String] $JavaHome
-  )
+<#check cert 
+run it
 
-  Process {
-
-    # do not check if directory does not exist
-    If (!(Test-Path -Path $JavaHome)) { return }
-
-    # use keytool as executeable if no keytool.exe can be found within bin/keytool.exe of java home
-    $KeyTool = $(Join-Path -Path $JavaHome -ChildPath "/bin/keytool.exe")
-    If (!(Test-Path -Path $KeyTool -PathType Leaf)) { $KeyTool = "keytool" }
-
-    # find existing cacerts files at different locations within java home
-    $KeyStores = @("lib/security/cacerts", "jre/lib/security/cacerts") |
-      Foreach-Object { Join-Path -Path $JavaHome -ChildPath $_ } |
-      Where-Object { Test-Path -Path $_ -PathType Leaf }
-
-    # return PSCustomObject with keystore and keytool locations
-    $KeyStores | ForEach-Object { [PSCustomObject] @{
-      KeyStore = $_
-      KeyTool = $KeyTool
-    }}
-
-  }
-
-}
-
-
-# Returns a list of cacert keystore files and keytool within default windows application paths
-Function Get-JavaCertStores {
-  Get-JavaHomes | Get-JavaHomeCertStoreLocations
-}
-
-Contact UsTerms of UsePrivacy PolicyGallery StatusFeedbackFAQs© 2019 Microsoft Corporation
-
-
-
-############################################################################################################################
-
-my script 
-
-
-Function LstCerts($path){
-
-If (!(Test-Path $path)) {
-    return "Directory not found"
-}
- 
-
-
- $KeyTool = $(Join-Path -Path $path -ChildPath "jre/bin/keytool.exe")
-    If (!(Test-Path -Path $KeyTool -PathType Leaf)) { $KeyTool = "keytool" }
-
-    # find existing cacerts files at different locations within java home
-    $KeyStores = @("jre/jre/lib/security/cacerts") |
-      Foreach-Object { Join-Path -Path $path -ChildPath $_ } |
-      Where-Object { Test-Path -Path $_ -PathType Leaf }
-
-    # return PSCustomObject with keystore and keytool locations
-   $KeyStores | ForEach-Object { [PSCustomObject] @{
-      KeyStore = $_
-      KeyTool = $KeyTool
-    }}
-  
-
-}
-
-
-<#Install#>
-
-Function Install-X509CertificateToJavaTrustedCaKeystores {
-  [CmdletBinding()]
-  Param(
-    [Parameter(Mandatory = $True, ValueFromPipelineByPropertyName=$True, Position = 0)]
-    [ValidateNotNullOrEmpty()]
-    [Alias("CertificateObject", "X509CertificateObject", "X509Certificate2")]
-    [System.Security.Cryptography.X509Certificates.X509Certificate2] $X509Certificate,
-    [Parameter(Mandatory = $False, ValueFromPipelineByPropertyName=$True, Position = 1)]
-    [Alias("FriendlyName", "Name", "Alias", "CertificateAlias")]
-    [String] $CertAlias,
-    [Parameter(Mandatory = $True, Position = 3)]
-    [ValidateNotNullOrEmpty()]
-    [Alias("StorePassword", "StorePass", "Password", "Pass")]
-    [String] $KeyStorePass = "changeit"
-  )
-
-  BEGIN {
-
-    # Gather all java keystores - this is only required once when running multiple times
-    $JavaKeystores = Get-JavaCertStores
-  }
-
-  PROCESS {
-
-    # Use the common name as alias if no alias has been given
-    If ([String]::IsNullOrWhiteSpace($CertAlias)) {
-      $CertAlias = Get-X509CommonNameFromSubject -X509Subject $X509Certificate.Subject
-    }
-
-    # Remove invalid characters from alias
-    $CertAlias = Get-SafeCertificateAlias $CertAlias
-
-    # Export certificate to temporary file
-    $TempCertFile = Export-X509Certificate -X509Certificate $X509Certificate
-
-    Try {
-      # Import the certificate to all given java keystores
-      $JavaKeyStores | Import-TrustedCaCertificateToJavaKeystore -CertAlias $CertAlias -CertFile $TempCertFile -KeyStorePass $KeyStorePass
-    }
-    Finally {
-      # Remove the exported certificate after importing to all stores
-      Remove-Item $TempCertFile
-    }
-
-  }
-
-}
-
+Install-X509CertificateToJavaTrustedCaKeystores -X509Certificate "C:\Users\Roman\Downloads\CaCert.cer" -CertAlias "DigiCert Global Root CA"
+#>
