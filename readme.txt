@@ -1,2 +1,1 @@
-
-https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/5.1.1/gradle-5.1.1.pom
+https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin/1.3.51/kotlin-gradle-plugin-1.3.51.pom
